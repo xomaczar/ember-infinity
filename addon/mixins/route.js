@@ -1,6 +1,7 @@
 import Ember from 'ember';
 import { emberDataVersionIs } from 'ember-version-is';
 
+const { get } = Ember;
 const keys = Object.keys || Ember.keys;
 const assign = Ember.assign || Ember.merge;
 /**
@@ -170,14 +171,25 @@ const RouteMixin = Ember.Mixin.create({
     @param {Object} boundParams Optional, any route properties to be included as additional params.
     @return {Ember.RSVP.Promise}
   */
-  infinityModel(modelName, options, boundParams) {
-    if (emberDataVersionIs('lessThan', '1.13.0')) {
-      this.set('_storeFindMethod', 'find');
+  infinityModel(modelNameOrFindFunction, options, boundParams) {
+
+    if (typeof modelNameOrFindFunction === 'string') {
+      this.set('_infinityModelName', modelNameOrFindFunction);
+
+      if (emberDataVersionIs('lessThan', '1.13.0')) {
+        this.set('_storeFindMethod', 'find');
+      }
+
+      this._ensureCompatibility();
+      this._findMethod = (params) => {
+        let modelName = this.get('_infinityModelName');
+        return this.get('store')[this._storeFindMethod](modelName, params);
+      };
+    } else if (typeof modelNameOrFindFunction === 'function') {
+      this._findMethod = modelNameOrFindFunction;
+    } else {
+      throw new Ember.Error(`Ember Infinity: Unsupported first argument to infinityModel: ${modelNameOrFindFunction}`);
     }
-
-    this.set('_infinityModelName', modelName);
-
-    this._ensureCompatibility();
 
     options = options ? assign({}, options) : {};
     const startingPage = options.startingPage === undefined ? 0 : options.startingPage-1;
@@ -267,12 +279,12 @@ const RouteMixin = Ember.Mixin.create({
    @returns {Ember.RSVP.Promise} A Promise that resolves the next page of objects
    */
   _requestNextPage() {
-    const modelName   = this.get('_infinityModelName');
     const nextPage    = this.incrementProperty('currentPage');
     const params      = this._buildParams(nextPage);
 
-    return this.get('store')[this._storeFindMethod](modelName, params).then(
-      this._afterInfinityModel(this));
+    return this._findMethod(params).then(this._afterInfinityModel(this));
+    // return this.get('store')[this._storeFindMethod](modelName, params).then(
+    //   this._afterInfinityModel(this));
   },
 
   /**
@@ -313,7 +325,7 @@ const RouteMixin = Ember.Mixin.create({
 
   _doUpdate(newObjects) {
     let infinityModel = this._infinityModel();
-    return infinityModel.pushObjects(newObjects.get('content'));
+    return infinityModel.pushObjects(get(newObjects, 'content'));
   },
 
   /**
@@ -324,7 +336,7 @@ const RouteMixin = Ember.Mixin.create({
    @private
    */
   _nextPageLoaded(newObjects) {
-    const totalPages = newObjects.get(this.get('totalPagesParam'));
+    const totalPages = get(newObjects, this.get('totalPagesParam'));
     this.set('_totalPages', totalPages);
 
     let infinityModel = newObjects;

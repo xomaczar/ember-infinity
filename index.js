@@ -14,8 +14,15 @@ module.exports = {
   },
 
   included: function(app) {
+    this._super.included.apply(this, arguments);
+
+    // see: https://github.com/ember-cli/ember-cli/issues/3718
+    if (typeof app.import !== 'function' && app.app) {
+      app = app.app;
+    }
+
     this.addons.forEach(function(addon){
-      if (addon.name === "ember-version-is") {
+      if (addon.name === 'ember-version-is') {
         addon.included.apply(addon, [app]);
       }
     });
